@@ -19,7 +19,7 @@ void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *request){
     time(&current_time);
 
     if(difftime(current_time, request->sent) >= 1){
-        if(request-?times_sent >= 5){
+        if(request->times_sent >= 5){
             //send icmp host unreachable
         }else{
             //send arp request
