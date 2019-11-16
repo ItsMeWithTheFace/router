@@ -11,13 +11,66 @@
 #include "sr_if.h"
 #include "sr_protocol.h"
 
+/*
+  Handles ARP requests when necessary, as described in the header
+*/
+void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *request){
+    time_t current_time;
+    time(&current_time);
+
+    if(difftime(current_time, request->sent) >= 1){
+        if(request-?times_sent >= 5){
+            //send icmp host unreachable
+        }else{
+            //send arp request
+            uint8_t *packet = (uint8_t*)malloc(sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t));
+            assert(packet);
+            sr_ethernet_hdr_t *ethernet_hdr =  (sr_ethernet_hdr_t*)(packet);
+
+            memset(ethernet_hdr->ether_dhost,255, sizeof(uint8_t) * ETHER_ADDR_LEN);
+            ethernet_hdr->ether_type = htons(ethertype_arp);
+
+            sr_arp_hdr_t *arp_hdr = (sr_arp_hdr_t*)(packet + sizeof(sr_ethernet_hdr_t));
+            arp_hdr->ar_hrd = htons(arp_hrd_ethernet);
+            arp_hdr->ar_pro = htons(ethertype_ip);
+            arp_hdr->ar_hln = ETHER_ADDR_LEN;
+            arp_hdr->ar_pln = 4;
+            arp_hdr->ar_op = htons(arp_op_request);
+            memset(arp_hdr->ar_tha, 0, ETHER_ADDR_LEN);
+            arp_hdr->ar_tip = request->ip;
+
+            //Do longestp prefix matching
+            struct sr_rt *match = longest_prefix_match(sr, request->ip);
+            if(match == 0){
+                fprintf(stderr,"Error");
+                free(packet);
+                return;
+            }
+            struct sr_if* iface = sr_get_interface(sr, match->interface);
+            memcpy(arp_hdr->ar_sha, iface->addr, sizeof(uint8_t) * ETHER_ADDR_LEN));
+            arp_hdr->ar_sip = iface->ip;
+
+            sr_send_packet(sr, packet, sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t), iface->name)
+        }
+    }
+}
+
 /* 
   This function gets called every second. For each request sent out, we keep
   checking whether we should resend an request or destroy the arp request.
   See the comments in the header file for an idea of what it should look like.
 */
 void sr_arpcache_sweepreqs(struct sr_instance *sr) { 
-    /* Fill this in */
+    
+    struct sr_arpreq *current = sr->cache.requests
+    struct sr_arpreq *next = NULL;
+
+    while(current != NULL){
+        //Loop through each request and handle them using handle_arpreq function
+        next = current->next;
+        handle_arpreq(sr, current)
+        current = next;
+    }
 }
 
 /* You should not need to touch the rest of this code. */

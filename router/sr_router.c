@@ -22,6 +22,37 @@
 #include "sr_arpcache.h"
 #include "sr_utils.h"
 
+//Helper Functions
+/*---------------------------------------------------------------------
+ * Method: longest_prefix_match(struct sr_rt)
+ * Scope:  Global
+ *
+ * Gets the longest prefix match of a given ip using the routing table
+ *
+ *---------------------------------------------------------------------*/
+
+ struct sr_rt* longest_prefix_match(struct sr_instance*, uint32_t destination_ip)
+ {
+    struct sr_rt* best_match = 0;
+    uint32_t current_ip_match = 0;
+
+    struct sr_rt* rt_iterate = sr->routing_table;
+    while(rt_iterate != NULL){
+      //
+      if((rt_iterate->mask.s_addr & rt_iterate->dest.s_addr) == (rt_iterate->mask.s_addr & destination_ip)){
+        if(best_match != rt_iterate || rt_iterate->mask.s_addr > current_ip_match){
+          best_match = rt_iterate;
+          current_ip_match = rt_iterate->mask.s_addr;
+        }
+      }
+      //Check next destination in table
+      rt_iterate = rt_iterate->next;
+    }
+
+    return best_match;
+ }
+
+
 /*---------------------------------------------------------------------
  * Method: sr_init(void)
  * Scope:  Global
