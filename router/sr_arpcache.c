@@ -22,8 +22,22 @@ void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *request){
     time(&current_time);
 
     if(difftime(current_time, request->sent) >= 1){
-        if(request->times_sent >= 5){
-        }else{
+        if(request->times_sent >= 5) {
+            struct sr_packet* curr_pkt = request->packets;
+            while (curr_pkt != NULL) {
+                icmp_non_type0_handler(
+                    sr,
+                    curr_pkt,
+                    (sr_ip_hdr_t *)(curr_pkt->buf + sizeof(sr_ethernet_hdr_t)),
+                    (sr_ethernet_hdr_t *)(curr_pkt->buf),
+                    HOST_UNR
+                );
+                curr_pkt = curr_pkt->next;
+            }
+            sr_arpreq_destroy(&(sr->cache), request);
+        } else {
+            
+            /* Send ARP request packet */
             uint8_t *packet = (uint8_t*)malloc(sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t));
             assert(packet);
             sr_ethernet_hdr_t *ethernet_hdr =  (sr_ethernet_hdr_t*)(packet);
@@ -40,17 +54,21 @@ void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *request){
             memset(arp_hdr->ar_tha, 0, ETHER_ADDR_LEN);
             arp_hdr->ar_tip = request->ip;
 
+            /* See if destination exists */
             struct sr_rt *match = longest_prefix_match(sr, request->ip);
             if(!match){
                 fprintf(stderr,"Error");
                 free(packet);
                 return;
             }
+
             struct sr_if* iface = sr_get_interface(sr, match->interface);
             memcpy(arp_hdr->ar_sha, iface->addr, sizeof(uint8_t) * ETHER_ADDR_LEN);
             arp_hdr->ar_sip = iface->ip;
 
             sr_send_packet(sr, packet, sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t), iface->name);
+            request->sent = current_time;
+            request->times_sent++;
         }
     }
 }

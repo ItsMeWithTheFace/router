@@ -1,0 +1,10 @@
+gcc -c -g -Wall -ansi -D_DEBUG_ -D_GNU_SOURCE -D_LINUX_ sr_router.c -o sr_router.o
+gcc -c -g -Wall -ansi -D_DEBUG_ -D_GNU_SOURCE -D_LINUX_ sr_main.c -o sr_main.o
+gcc -c -g -Wall -ansi -D_DEBUG_ -D_GNU_SOURCE -D_LINUX_ sr_if.c -o sr_if.o
+gcc -c -g -Wall -ansi -D_DEBUG_ -D_GNU_SOURCE -D_LINUX_ sr_rt.c -o sr_rt.o
+gcc -c -g -Wall -ansi -D_DEBUG_ -D_GNU_SOURCE -D_LINUX_ sr_vns_comm.c -o sr_vns_comm.o
+gcc -c -g -Wall -ansi -D_DEBUG_ -D_GNU_SOURCE -D_LINUX_ sr_utils.c -o sr_utils.o
+gcc -c -g -Wall -ansi -D_DEBUG_ -D_GNU_SOURCE -D_LINUX_ sr_dumper.c -o sr_dumper.o
+gcc -c -g -Wall -ansi -D_DEBUG_ -D_GNU_SOURCE -D_LINUX_ sr_arpcache.c -o sr_arpcache.o
+gcc -c -g -Wall -ansi -D_DEBUG_ -D_GNU_SOURCE -D_LINUX_ sha1.c -o sha1.o
+gcc -g -Wall -ansi -D_DEBUG_ -D_GNU_SOURCE -D_LINUX_ -o sr sr_router.o sr_main.o sr_if.o sr_rt.o sr_vns_comm.o sr_utils.o sr_dumper.o sr_arpcache.o sha1.o -lnsl -lresolv -lm -lpthread 
