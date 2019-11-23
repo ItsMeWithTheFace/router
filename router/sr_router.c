@@ -31,7 +31,7 @@
  *
  *---------------------------------------------------------------------*/
 
- struct sr_rt* longest_prefix_match(struct sr_instance*, uint32_t destination_ip)
+ struct sr_rt* longest_prefix_match(struct sr_instance* sr, uint32_t destination_ip)
  {
     struct sr_rt* best_match = 0;
     uint32_t current_ip_match = 0;
