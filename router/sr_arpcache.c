@@ -11,6 +11,9 @@
 #include "sr_if.h"
 #include "sr_protocol.h"
 
+
+#include <assert.h>
+#include "sr_rt.h"
 /*
   Handles ARP requests when necessary, as described in the header
 */
@@ -20,9 +23,7 @@ void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *request){
 
     if(difftime(current_time, request->sent) >= 1){
         if(request->times_sent >= 5){
-            //send icmp host unreachable
         }else{
-            //send arp request
             uint8_t *packet = (uint8_t*)malloc(sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t));
             assert(packet);
             sr_ethernet_hdr_t *ethernet_hdr =  (sr_ethernet_hdr_t*)(packet);
@@ -39,18 +40,17 @@ void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *request){
             memset(arp_hdr->ar_tha, 0, ETHER_ADDR_LEN);
             arp_hdr->ar_tip = request->ip;
 
-            //Do longestp prefix matching
             struct sr_rt *match = longest_prefix_match(sr, request->ip);
-            if(match == 0){
+            if(!match){
                 fprintf(stderr,"Error");
                 free(packet);
                 return;
             }
             struct sr_if* iface = sr_get_interface(sr, match->interface);
-            memcpy(arp_hdr->ar_sha, iface->addr, sizeof(uint8_t) * ETHER_ADDR_LEN));
+            memcpy(arp_hdr->ar_sha, iface->addr, sizeof(uint8_t) * ETHER_ADDR_LEN);
             arp_hdr->ar_sip = iface->ip;
 
-            sr_send_packet(sr, packet, sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t), iface->name)
+            sr_send_packet(sr, packet, sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t), iface->name);
         }
     }
 }
@@ -62,13 +62,12 @@ void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *request){
 */
 void sr_arpcache_sweepreqs(struct sr_instance *sr) { 
     
-    struct sr_arpreq *current = sr->cache.requests
+    struct sr_arpreq *current = sr->cache.requests;
     struct sr_arpreq *next = NULL;
-
+    printf("testing");
     while(current != NULL){
-        //Loop through each request and handle them using handle_arpreq function
         next = current->next;
-        handle_arpreq(sr, current)
+        handle_arpreq(sr, current);
         current = next;
     }
 }

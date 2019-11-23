@@ -3,3 +3,6 @@ http_server2/
 pox_module/
 **/index.html
 .DS_Store
+router/*.o
+router/*.d
+router/sr
