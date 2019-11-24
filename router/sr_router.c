@@ -38,7 +38,7 @@
     uint32_t current_ip_match = 0;
 
     struct sr_rt* walker = sr->routing_table;
-    while(walker != NULL){
+    while(walker != NULL) {
       if((walker->mask.s_addr & walker->dest.s_addr) == (walker->mask.s_addr & destination_ip)){
         if(!best_match || (walker->mask.s_addr > current_ip_match)){
           best_match = walker;
@@ -51,63 +51,42 @@
     return best_match;
  }
 
-  int forward_packet(struct sr_instance* sr, uint8_t * packet, unsigned int len)
-  {
-    if (check_validity(packet, len, ethertype(packet)) != 0) return HOST_UNR;
-
-    sr_ip_hdr_t * ip_header = (sr_ip_hdr_t *) (packet + sizeof(sr_ethernet_hdr_t));
-
-    if (ip_header->ip_ttl <= 1) return 11;
-
-    ip_header->ip_ttl -= 1;
-
-    struct sr_rt* match = longest_prefix_match(sr, ip_header->ip_dst);
-
-    return 0;
-  }
-
-  void new_ip_hdr(sr_ip_hdr_t* dest_ip_hdr, sr_ip_hdr_t* src_ip_hdr)
-  {
-    /* IP header */
-    
-    dest_ip_hdr->ip_hl = HL_IP;
-    dest_ip_hdr->ip_v = V_IP;
-    dest_ip_hdr->ip_len = htons(sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_t3_hdr_t));
-    dest_ip_hdr->ip_id = src_ip_hdr->ip_id;
-    dest_ip_hdr->ip_tos = src_ip_hdr->ip_tos;
-    dest_ip_hdr->ip_ttl = TTL_IP;
-    dest_ip_hdr->ip_p = htons(ip_protocol_icmp);
-    dest_ip_hdr->ip_sum = CHKSUM;
-    dest_ip_hdr->ip_sum = cksum(CHKSUM, sizeof(sr_ip_hdr_t));
-    dest_ip_hdr->ip_off = htons(IP_DF);
-    dest_ip_hdr->ip_dst = src_ip_hdr->ip_src;
-  }
-
-  void new_eth_hdr(sr_ethernet_hdr_t* dest_eth_hdr, sr_ethernet_hdr_t* src_eth_hdr, struct sr_rt* match)
-  {
-    /* Ethernet header */
-    dest_eth_hdr->ether_type = htons(ethertype_ip);
-    memcpy(dest_eth_hdr->ether_shost, src_eth_hdr->ether_shost, ETHER_ADDR_LEN);
-    memcpy(dest_eth_hdr->ether_dhost, match->interface, ETHER_ADDR_LEN);
-  }
-
  void icmp_non_type0_handler(struct sr_instance* sr, sr_ip_hdr_t* src_ip_hdr, sr_ethernet_hdr_t* src_eth_hdr, int error_code_or_type)
- { 
+ { 	
+    unsigned int length = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_t3_hdr_t);
+    uint8_t* buffer = (uint8_t*)malloc(length);
+
+    /* Ethernet header */
+    sr_ethernet_hdr_t *eth_header = (sr_ethernet_hdr_t*)(buffer);
+    eth_header->ether_type = htons(ethertype_ip);
+    memset(eth_header->ether_shost, 0x00, ETHER_ADDR_LEN);
+    memset(eth_header->ether_dhost, 0x00, ETHER_ADDR_LEN);
+
+    /* IP header */
+    sr_ip_hdr_t *ip_header = (sr_ip_hdr_t*)(buffer + sizeof(sr_ethernet_hdr_t));
+    ip_header->ip_hl = HL_IP;
+    ip_header->ip_v = V_IP;
+    ip_header->ip_len = htons(sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_t3_hdr_t));
+    ip_header->ip_id = src_ip_hdr->ip_id;
+    ip_header->ip_tos = src_ip_hdr->ip_tos;
+    ip_header->ip_ttl = TTL_IP;
+    ip_header->ip_p = htons(ip_protocol_icmp);
+    ip_header->ip_sum = CHKSUM;
+    ip_header->ip_sum = cksum((uint8_t*)ip_header, sizeof(sr_ip_hdr_t));
+    ip_header->ip_off = htons(IP_DF);
+    ip_header->ip_dst = src_ip_hdr->ip_src;
+
+
     struct sr_rt *match = longest_prefix_match(sr, src_ip_hdr->ip_src);
     if(!match){
         fprintf(stderr,"Net Unreachable\n");
         return;
     }
-    /* IP header */
-    sr_ip_hdr_t *ip_header = (sr_ip_hdr_t*) malloc(sizeof(sr_ip_hdr_t));
-    new_ip_hdr(ip_header, src_ip_hdr);
 
-    /* Ethernet header */
-    sr_ethernet_hdr_t *eth_header = (sr_ethernet_hdr_t*) malloc(sizeof(sr_ethernet_hdr_t));
-    new_eth_hdr(eth_header, src_eth_hdr, match);
-
+    struct sr_if* iface = sr_get_interface(sr, match->interface);
+    
     /* ICMP header */
-    sr_icmp_t3_hdr_t *icmp_header = malloc(sizeof(sr_icmp_t3_hdr_t) + htons(src_ip_hdr->ip_len));
+    sr_icmp_t3_hdr_t *icmp_header = (sr_icmp_t3_hdr_t *)((uint8_t*)ip_header + sizeof(sr_ip_hdr_t));
 
     /* Check error code or type */
     switch(error_code_or_type) 
@@ -137,33 +116,35 @@
         break;
     }
 
-    icmp_header->unused = 0;
-    uint8_t content = sizeof(sr_icmp_t3_hdr_t) + htons(src_ip_hdr->ip_len); 
-    memcpy((uint8_t*)icmp_header + sizeof(sr_icmp_t3_hdr_t), &content, htons(src_ip_hdr->ip_len));
+    memcpy(icmp_header->data,(uint8_t*)src_ip_hdr, htons(src_ip_hdr->ip_len));
     icmp_header->icmp_sum = CHKSUM;
     icmp_header->icmp_sum = cksum(icmp_header, sizeof(sr_icmp_t3_hdr_t) + htons(src_ip_hdr->ip_len));
 
-    struct sr_if* iface = sr_get_interface(sr, match->interface);
+    printf("ICMP HEADER filled\n");
 
     if(icmp_header->icmp_code == PORT_UNR){
       ip_header->ip_src = src_ip_hdr->ip_dst;
     }else{
       ip_header->ip_src = iface->ip;
     }
-
-    uint32_t length = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_t3_hdr_t) + htons(src_ip_hdr->ip_len);
-    uint8_t* buffer = malloc(length);
-    memcpy(buffer, eth_header, sizeof(sr_ethernet_hdr_t));
-    memcpy(buffer + sizeof(sr_ethernet_hdr_t), ip_header, sizeof(sr_ip_hdr_t));
-    memcpy(buffer + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t), icmp_header, sizeof(sr_icmp_t3_hdr_t) + htons(src_ip_hdr->ip_len));
-
+    printf("ICMP checksum done\n");
     nexthop_interface(sr, buffer,  sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_t3_hdr_t), match->gw.s_addr, iface);
+    printf("SENT\n");
     free(buffer);
  }
 
  void icmp_echo_handler(struct sr_instance* sr, sr_ip_hdr_t* src_ip_hdr, sr_ethernet_hdr_t* src_eth_hdr)
  { 
     uint8_t* buffer = (uint8_t*)malloc(sizeof(sr_ethernet_hdr_t) + ntohs(src_ip_hdr->ip_len));
+    printf("regular ECHO\n");
+
+    /* Ethernet header */
+    sr_ethernet_hdr_t *eth_header = (sr_ethernet_hdr_t*) buffer;
+    eth_header->ether_type = htons(ethertype_ip);
+    memset(eth_header->ether_shost,0x00,ETHER_ADDR_LEN);
+    memset(eth_header->ether_dhost,0x00,ETHER_ADDR_LEN);
+
+    printf("after ETH\n");
 
     /* IP header */
     sr_ip_hdr_t *ip_header = (sr_ip_hdr_t*)(buffer + sizeof(sr_ethernet_hdr_t));
@@ -171,6 +152,8 @@
     ip_header->ip_dst = src_ip_hdr->ip_src;
     ip_header->ip_src = src_ip_hdr->ip_dst;
     ip_header->ip_sum = cksum(buffer+sizeof(sr_ethernet_hdr_t), sizeof(sr_ip_hdr_t));
+
+    printf("after IP\n");
 
     struct sr_rt *match = longest_prefix_match(sr, src_ip_hdr->ip_src);
     if(!match){
@@ -181,12 +164,6 @@
 
     struct sr_if* iface = sr_get_interface(sr, match->interface);
 
-    /* Ethernet header */
-    sr_ethernet_hdr_t *eth_header = (sr_ethernet_hdr_t*)buffer;
-    eth_header->ether_type = htons(ethertype_ip);
-    memset(eth_header->ether_shost,0x00,ETHER_ADDR_LEN);
-    memset(eth_header->ether_dhost,0x00,ETHER_ADDR_LEN);
-
     /* ICMP header */
     sr_icmp_hdr_t *icmp_header = (sr_icmp_hdr_t*)(buffer + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
     icmp_header->icmp_type = 0;
@@ -195,7 +172,6 @@
     icmp_header->icmp_sum = CHKSUM;
     icmp_header->icmp_sum = cksum((uint8_t*)icmp_header, ntohs(src_ip_hdr->ip_len) - sizeof(sr_ip_hdr_t));
     
-
     nexthop_interface(sr, buffer, sizeof(sr_ethernet_hdr_t) + ntohs(src_ip_hdr->ip_len),match->gw.s_addr, iface);
     free(buffer);
  }
@@ -208,8 +184,6 @@
      fprintf(stderr, "Ethernet Header Length Too Short\n");
      return 1;
    }
-   
-   sr_ethernet_hdr_t *eth_header = (sr_ethernet_hdr_t*)packet;
 
    if(packet_type == ethertype_ip){
      minimum_len += sizeof(sr_ip_hdr_t);
@@ -227,7 +201,7 @@
      
      uint32_t curr_ip_sum = ip_header->ip_sum;
      ip_header->ip_sum = CHKSUM;
-     if(cksum(ip_header, ip_header->ip_hl*4) != curr_ip_sum){
+     if(cksum(ip_header, ip_header->ip_hl * 4) != curr_ip_sum){
        fprintf(stderr,"IP Checksum Mismatch");
        return 4;
      }
@@ -239,7 +213,7 @@
          return 5;
        }
 
-       sr_icmp_hdr_t *icmp_header = (sr_icmp_hdr_t*)(packet + sizeof(sr_ethernet_hdr_t));
+       sr_icmp_hdr_t *icmp_header = (sr_icmp_hdr_t*)(packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
        uint32_t curr_icmp_sum = icmp_header->icmp_sum;
        icmp_header->icmp_sum = CHKSUM;
        if(cksum((uint8_t*)icmp_header, ntohs(ip_header->ip_len) - sizeof(sr_ip_hdr_t)) != curr_icmp_sum){
@@ -262,19 +236,42 @@
  }
 
  void nexthop_interface(struct sr_instance* sr, uint8_t* packet, unsigned int length, uint32_t ip, struct sr_if* iface)
- {
+ { 
    struct sr_arpentry* entry = sr_arpcache_lookup(&(sr->cache), ip);
-
+   printf("Handling next hop\n");
    if(entry != NULL){
-     sr_ethernet_hdr_t* eth_header = (sr_ethernet_hdr_t*)(packet);
+     sr_ethernet_hdr_t* eth_header = (sr_ethernet_hdr_t *)(packet);
+     printf("OOF IM NULL\n");
      memcpy(eth_header->ether_dhost,entry->mac,ETHER_ADDR_LEN);
      memcpy(eth_header->ether_shost,iface->addr,ETHER_ADDR_LEN);
      sr_send_packet(sr,packet,length,iface->name);
      free(entry);
-   }else{
-     struct sr_arpreq *request = sr_arpcache_queuereq(&sr->cache, ip, packet, length, iface->name);
-     handle_arpreq(sr, request);
+   } else {
+     printf("TEST\n");
+     sr_arpcache_queuereq(&sr->cache, ip, packet, length, iface->name);
    }
+ }
+
+ int check_destination(struct sr_instance* sr, uint32_t ip_dst){
+   struct sr_if* iface_walker = sr->if_list;
+
+   while(iface_walker != NULL){
+     if(ip_dst == iface_walker->ip){
+       return 1;
+     }
+
+     iface_walker = iface_walker->next;
+   }
+
+   return 0;
+ }
+
+  int arp_check(sr_arp_hdr_t* arp_header){
+    if(ntohs(arp_header->ar_hrd)==arp_hrd_ethernet && ntohs(arp_header->ar_pro) == ethertype_ip && arp_header->ar_hln == ETHER_ADDR_LEN && arp_header->ar_pln == 4){
+      return 1;
+    }else{
+      return 0;
+    }
  }
 
 /*---------------------------------------------------------------------
@@ -337,6 +334,7 @@ void sr_handlepacket(struct sr_instance* sr,
 
   uint16_t packet_type = ethertype(packet);
 
+
   if (check_validity(packet, len, packet_type) != 0) {
     fprintf(stderr, "oof\n");
     return;
@@ -345,50 +343,97 @@ void sr_handlepacket(struct sr_instance* sr,
   sr_ethernet_hdr_t * eth_header = (sr_ethernet_hdr_t *) packet;
 
   if (packet_type == ethertype_ip) {
-    /* Incoming IP packet */
-    sr_ip_hdr_t * ip_header = (sr_ip_hdr_t *) (packet + sizeof(sr_ip_hdr_t));
-    struct sr_if* if_walker = 0;
-    if_walker = sr->if_list;
 
-    while(if_walker != NULL) {      
-      /* check if request is to me */
-      if (if_walker->ip == ip_header->ip_dst) {
-        /* check if request ICMP echo */
-        if (ip_header->ip_p == ip_protocol_icmp) {
-          sr_icmp_hdr_t * icmp_header = (sr_icmp_hdr_t *)(packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
-          if (icmp_header->icmp_type == 0) { /* echo request */
-            icmp_echo_handler(
-              sr,
-              (sr_ip_hdr_t *) (packet + sizeof(sr_ip_hdr_t)),
-              (sr_ethernet_hdr_t *) packet
-            );
-          }
-        } else { /* TCP/UDP request */
-          icmp_non_type0_handler(
-            sr,
-            (sr_ip_hdr_t *) (packet + sizeof(sr_ip_hdr_t)),
-            (sr_ethernet_hdr_t *) packet,
-            PORT_UNR
-          );
-        }
-        return;
+    printf("*** -> GOT IP with Header Length: %d \n",len);
+    /* Incoming IP packet */
+    sr_ip_hdr_t * ip_header = (sr_ip_hdr_t *) (packet + sizeof(sr_ethernet_hdr_t));
+    print_hdr_ip((packet + sizeof(sr_ethernet_hdr_t)));
+    int checker = check_destination(sr, ip_header->ip_dst);
+
+    /* Destination is us */
+    if(checker == 1){
+      printf("CHECKER SUCCESS \n");
+      if(ip_header->ip_p == 1){
+        printf("Echo Requested \n");
+        icmp_echo_handler(sr, ip_header, eth_header);
+      }else{
+        printf("None Type0\n");
+        icmp_non_type0_handler(sr, ip_header, eth_header, 3);
       }
-      if_walker = if_walker->next;
-    }
-    /* packet is not destined to me */
-    int error = forward_packet(sr, packet, len);
-    if (error != 0) {
-      icmp_non_type0_handler(
-            sr,
-            (sr_ip_hdr_t *) (packet + sizeof(sr_ip_hdr_t)),
-            (sr_ethernet_hdr_t *) packet,
-            error
-          );
+
+    } else {
+      printf("CHECKER FAIL \n");
+      
+      ip_header->ip_ttl = ip_header->ip_ttl-1;
+      ip_header->ip_sum = 0;
+      ip_header->ip_sum = cksum(ip_header, ip_header->ip_hl*4);
+      printf("	TTL = %d\n",ip_header->ip_ttl);
+      struct sr_rt *match = longest_prefix_match(sr, ip_header->ip_dst);
+      if(!match) {
+        printf("	no match in LPM, net unreachable\n");
+        icmp_non_type0_handler(sr,ip_header,eth_header,0);
+      } else {
+        printf("MATCH FOUND\n");
+        struct sr_if *iface = sr_get_interface(sr, match->interface);
+        nexthop_interface(sr, packet, len, match->gw.s_addr,iface);
+      }
     }
   } else if (packet_type == ethertype_arp) {
-    
+    printf("*** -> ARP %d \n",len);
+
+    sr_arp_hdr_t * arp_src = (sr_arp_hdr_t*)(packet + sizeof(sr_ethernet_hdr_t));
+    int arp_valid = arp_check(arp_src);
+    struct sr_if* iface = sr_get_interface(sr, interface);
+    if(arp_valid == 1) {
+      if(ntohs(arp_src->ar_op) == arp_op_request) {
+        if(arp_src->ar_tip == iface->ip) {
+          uint8_t* buffer = (uint8_t*)malloc(sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t));
+          assert(buffer);
+          printf("Buffer not empty! \n");
+          sr_ethernet_hdr_t* eth_header = (sr_ethernet_hdr_t*)(buffer);
+          memcpy(eth_header->ether_dhost, arp_src->ar_sha, ETHER_ADDR_LEN);
+          memcpy(eth_header->ether_shost, iface->addr, ETHER_ADDR_LEN);
+          eth_header->ether_type = htons(ethertype_arp);
+          printf("ARP: Eth header filled! \n");
+          sr_arp_hdr_t* arp_header = (sr_arp_hdr_t*)(buffer + sizeof(sr_ethernet_hdr_t));
+          arp_header->ar_hrd = htons(arp_hrd_ethernet);
+          arp_header->ar_pro = htons(ethertype_ip);
+          arp_header->ar_hln = ETHER_ADDR_LEN;
+          arp_header->ar_pln = 4;
+          arp_header->ar_op = htons(arp_op_reply);
+          memcpy(arp_header->ar_sha, iface->addr, ETHER_ADDR_LEN);
+          arp_header->ar_sip = iface->ip;
+          memcpy(arp_header->ar_tha, arp_src->ar_sha, ETHER_ADDR_LEN);
+          arp_header->ar_tip = arp_src->ar_sip;
+          printf("ARP: ARP header filled! \n");
+          sr_send_packet(sr, buffer,sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t), iface->name);
+          printf("ARP: packet sent! \n");
+          free(buffer);
+        } else {
+          fprintf(stderr,"Error\n");
+          return;
+        }
+      } else if(ntohs(arp_src->ar_op) == arp_op_reply) {
+        if(arp_src->ar_tip == iface->ip) {
+          printf("ARP_REP: entered! \n");
+
+          struct sr_arpreq* request = sr_arpcache_insert(&sr->cache, arp_src->ar_sha, arp_src->ar_sip);
+          if(request != NULL){
+
+            printf("ARP_REP: request not null! \n");
+            struct sr_if* iface;
+            struct sr_packet* curr_pkt = request->packets;
+            while (curr_pkt != NULL){
+              iface = sr_get_interface(sr,curr_pkt->iface);
+              nexthop_interface(sr,curr_pkt->buf, curr_pkt->len, request->ip, iface);
+              curr_pkt = curr_pkt->next;
+            }
+
+            sr_arpreq_destroy(&sr->cache, request);
+          }
+        }
+      }
+    }
   }
-
-
 }/* end sr_ForwardPacket */
 

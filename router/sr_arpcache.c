@@ -17,12 +17,14 @@
 /*
   Handles ARP requests when necessary, as described in the header
 */
-void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *request){
+void handle_arpreq(struct sr_instance* sr, struct sr_arpreq* request){
     time_t current_time;
     time(&current_time);
 
-    if(difftime(current_time, request->sent) >= 1){
+    printf("TESTING arp handling\n");
+    if(difftime(current_time, request->sent) >= 1) {
         if(request->times_sent >= 5) {
+            printf("TESTING times sent > 5\n");
             struct sr_packet* curr_pkt = request->packets;
             while (curr_pkt != NULL) {
                 icmp_non_type0_handler(
@@ -36,14 +38,15 @@ void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *request){
             sr_arpreq_destroy(&(sr->cache), request);
         } else {
             /* Send ARP request packet */
-            uint8_t *packet = (uint8_t*)malloc(sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t));
-            assert(packet);
-            sr_ethernet_hdr_t *ethernet_hdr =  (sr_ethernet_hdr_t*)(packet);
+            printf("TESTING times sent NOT > 5\n");
+            uint8_t* packet = (uint8_t *)malloc(sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t));
+            sr_ethernet_hdr_t* ethernet_hdr =  (sr_ethernet_hdr_t *)(packet);
 
-            memset(ethernet_hdr->ether_dhost,255, sizeof(uint8_t) * ETHER_ADDR_LEN);
+            memset(ethernet_hdr->ether_dhost, 255, sizeof(uint8_t) * ETHER_ADDR_LEN);
             ethernet_hdr->ether_type = htons(ethertype_arp);
 
-            sr_arp_hdr_t *arp_hdr = (sr_arp_hdr_t*)(packet + sizeof(sr_ethernet_hdr_t));
+            printf("AFTER eth header set\n");
+            sr_arp_hdr_t* arp_hdr = (sr_arp_hdr_t *)(packet + sizeof(sr_ethernet_hdr_t));
             arp_hdr->ar_hrd = htons(arp_hrd_ethernet);
             arp_hdr->ar_pro = htons(ethertype_ip);
             arp_hdr->ar_hln = ETHER_ADDR_LEN;
@@ -52,6 +55,7 @@ void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *request){
             memset(arp_hdr->ar_tha, 0, ETHER_ADDR_LEN);
             arp_hdr->ar_tip = request->ip;
 
+            printf("AFTER arp header set\n");
             /* See if destination exists */
             struct sr_rt *match = longest_prefix_match(sr, request->ip);
             if(!match){
@@ -59,12 +63,17 @@ void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *request){
                 free(packet);
                 return;
             }
+            printf("AFTER match found\n");
 
             struct sr_if* iface = sr_get_interface(sr, match->interface);
-            memcpy(arp_hdr->ar_sha, iface->addr, sizeof(uint8_t) * ETHER_ADDR_LEN);
+            memcpy(ethernet_hdr->ether_shost, iface->addr, ETHER_ADDR_LEN);
+            memcpy(arp_hdr->ar_sha, iface->addr, ETHER_ADDR_LEN);
             arp_hdr->ar_sip = iface->ip;
 
+            printf("AFTER interface found\n");
+
             sr_send_packet(sr, packet, sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t), iface->name);
+            free(packet);
             request->sent = current_time;
             request->times_sent++;
         }
@@ -76,11 +85,10 @@ void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *request){
   checking whether we should resend an request or destroy the arp request.
   See the comments in the header file for an idea of what it should look like.
 */
-void sr_arpcache_sweepreqs(struct sr_instance *sr) { 
+void sr_arpcache_sweepreqs(struct sr_instance* sr) { 
     
-    struct sr_arpreq *current = sr->cache.requests;
-    struct sr_arpreq *next = NULL;
-    printf("testing");
+    struct sr_arpreq* current = sr->cache.requests;
+    struct sr_arpreq* next = NULL;
     while(current != NULL){
         next = current->next;
         handle_arpreq(sr, current);
