@@ -93,8 +93,10 @@ void sr_print_if_list(struct sr_instance* );
 
 /* -- other helper functions -- */
 struct sr_rt* longest_prefix_match(struct sr_instance*, uint32_t);
-void new_ip_hdr(struct sr_packet*, sr_ip_hdr_t*, sr_ip_hdr_t*);
-void new_eth_hdr(struct sr_packet*, sr_ethernet_hdr_t*, sr_ethernet_hdr_t*, struct sr_rt*);
-void icmp_non_type0_handler(struct sr_instance*, struct sr_packet*, sr_ip_hdr_t*, sr_ethernet_hdr_t*, int);
-void icmp_echo_handler(struct sr_instance*, struct sr_packet*, sr_ip_hdr_t*, sr_ethernet_hdr_t*, uint32_t);
+void new_ip_hdr(sr_ip_hdr_t*, sr_ip_hdr_t*);
+void new_eth_hdr(sr_ethernet_hdr_t*, sr_ethernet_hdr_t*, struct sr_rt*);
+void icmp_non_type0_handler(struct sr_instance*, sr_ip_hdr_t*, sr_ethernet_hdr_t*, int);
+void icmp_echo_handler(struct sr_instance*, sr_ip_hdr_t*, sr_ethernet_hdr_t*);
+int check_validity(uint8_t *, unsigned int, uint16_t);
+void nexthop_interface(struct sr_instance*, uint8_t*, unsigned int, uint32_t, struct sr_if*);
 #endif /* SR_ROUTER_H */

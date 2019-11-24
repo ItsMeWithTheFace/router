@@ -27,7 +27,6 @@ void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *request){
             while (curr_pkt != NULL) {
                 icmp_non_type0_handler(
                     sr,
-                    curr_pkt,
                     (sr_ip_hdr_t *)(curr_pkt->buf + sizeof(sr_ethernet_hdr_t)),
                     (sr_ethernet_hdr_t *)(curr_pkt->buf),
                     HOST_UNR
@@ -36,7 +35,6 @@ void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *request){
             }
             sr_arpreq_destroy(&(sr->cache), request);
         } else {
-            
             /* Send ARP request packet */
             uint8_t *packet = (uint8_t*)malloc(sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t));
             assert(packet);
