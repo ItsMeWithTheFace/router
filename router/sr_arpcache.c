@@ -52,8 +52,8 @@ void handle_arpreq(struct sr_instance* sr, struct sr_arpreq* request){
 
             /* See if destination exists */
             struct sr_rt *match = longest_prefix_match(sr, request->ip);
-            if(!match){
-                fprintf(stderr,"Error");
+            if(!match) {
+                fprintf(stderr,"Could not find match");
                 free(packet);
                 return;
             }
