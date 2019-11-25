@@ -14,9 +14,12 @@
 
 #include <assert.h>
 #include "sr_rt.h"
-/*
-  Handles ARP requests when necessary, as described in the header
-*/
+/*---------------------------------------------------------------------
+ * Method: handle_arpreq
+ *
+ * Handles ARP Requests when necessary
+ *
+ *---------------------------------------------------------------------*/
 void handle_arpreq(struct sr_instance* sr, struct sr_arpreq* request){
     time_t current_time;
     time(&current_time);
@@ -76,10 +79,9 @@ void handle_arpreq(struct sr_instance* sr, struct sr_arpreq* request){
   See the comments in the header file for an idea of what it should look like.
 */
 void sr_arpcache_sweepreqs(struct sr_instance* sr) { 
-    
     struct sr_arpreq* current = sr->cache.requests;
     struct sr_arpreq* next = NULL;
-    while(current != NULL){
+    while(current != NULL) {
         next = current->next;
         handle_arpreq(sr, current);
         current = next;

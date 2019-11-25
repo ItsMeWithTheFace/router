@@ -98,7 +98,7 @@ void new_eth_hdr(sr_ethernet_hdr_t*, sr_ethernet_hdr_t*, struct sr_rt*);
 void icmp_non_type0_handler(struct sr_instance*, sr_ip_hdr_t*, sr_ethernet_hdr_t*, int);
 void icmp_echo_handler(struct sr_instance*, sr_ip_hdr_t*, sr_ethernet_hdr_t*);
 int check_validity(uint8_t *, unsigned int, uint16_t);
-void nexthop_interface(struct sr_instance*, uint8_t*, unsigned int, uint32_t, struct sr_if*);
+void forward_packet(struct sr_instance*, uint8_t*, unsigned int, uint32_t, struct sr_if*);
 int check_destination(struct sr_instance*, uint32_t);
 int arp_check(sr_arp_hdr_t*);
 #endif /* SR_ROUTER_H */

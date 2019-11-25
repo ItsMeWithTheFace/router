@@ -43,7 +43,7 @@ import sys
 log = core.getLogger()
 FLOOD_DELAY = 5
 #default location /home/ubuntu/cs144_lab3/IP_CONFIG
-IPCONFIG_FILE = './IP_CONFIG'
+IPCONFIG_FILE = './cs144_lab3/IP_CONFIG'
 IP_SETTING={}
 RTABLE = []
 ROUTER_IP={}
