@@ -21,10 +21,8 @@ void handle_arpreq(struct sr_instance* sr, struct sr_arpreq* request){
     time_t current_time;
     time(&current_time);
 
-    printf("TESTING arp handling\n");
     if(difftime(current_time, request->sent) >= 1) {
         if(request->times_sent >= 5) {
-            printf("TESTING times sent > 5\n");
             struct sr_packet* curr_pkt = request->packets;
             while (curr_pkt != NULL) {
                 icmp_non_type0_handler(
@@ -38,24 +36,20 @@ void handle_arpreq(struct sr_instance* sr, struct sr_arpreq* request){
             sr_arpreq_destroy(&(sr->cache), request);
         } else {
             /* Send ARP request packet */
-            printf("TESTING times sent NOT > 5\n");
             uint8_t* packet = (uint8_t *)malloc(sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t));
             sr_ethernet_hdr_t* ethernet_hdr =  (sr_ethernet_hdr_t *)(packet);
-
             memset(ethernet_hdr->ether_dhost, 255, sizeof(uint8_t) * ETHER_ADDR_LEN);
             ethernet_hdr->ether_type = htons(ethertype_arp);
 
-            printf("AFTER eth header set\n");
             sr_arp_hdr_t* arp_hdr = (sr_arp_hdr_t *)(packet + sizeof(sr_ethernet_hdr_t));
+            arp_hdr->ar_hln = ETHER_ADDR_LEN;
             arp_hdr->ar_hrd = htons(arp_hrd_ethernet);
             arp_hdr->ar_pro = htons(ethertype_ip);
-            arp_hdr->ar_hln = ETHER_ADDR_LEN;
             arp_hdr->ar_pln = 4;
             arp_hdr->ar_op = htons(arp_op_request);
             memset(arp_hdr->ar_tha, 0, ETHER_ADDR_LEN);
             arp_hdr->ar_tip = request->ip;
 
-            printf("AFTER arp header set\n");
             /* See if destination exists */
             struct sr_rt *match = longest_prefix_match(sr, request->ip);
             if(!match){
@@ -63,14 +57,10 @@ void handle_arpreq(struct sr_instance* sr, struct sr_arpreq* request){
                 free(packet);
                 return;
             }
-            printf("AFTER match found\n");
-
             struct sr_if* iface = sr_get_interface(sr, match->interface);
-            memcpy(ethernet_hdr->ether_shost, iface->addr, ETHER_ADDR_LEN);
-            memcpy(arp_hdr->ar_sha, iface->addr, ETHER_ADDR_LEN);
             arp_hdr->ar_sip = iface->ip;
-
-            printf("AFTER interface found\n");
+            memcpy(arp_hdr->ar_sha, iface->addr, ETHER_ADDR_LEN);
+            memcpy(ethernet_hdr->ether_shost, iface->addr, ETHER_ADDR_LEN);
 
             sr_send_packet(sr, packet, sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t), iface->name);
             free(packet);

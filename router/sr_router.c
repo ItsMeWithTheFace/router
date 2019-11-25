@@ -53,15 +53,14 @@
 
  void icmp_non_type0_handler(struct sr_instance* sr, sr_ip_hdr_t* src_ip_hdr, sr_ethernet_hdr_t* src_eth_hdr, int error_code_or_type)
  { 	
-    unsigned int length = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_t3_hdr_t);
-    uint8_t* buffer = (uint8_t*)malloc(length);
+    printf("ICMP\n");
+    uint8_t* buffer = (uint8_t*) malloc(sizeof(sr_icmp_t3_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_ethernet_hdr_t));
 
     /* Ethernet header */
     sr_ethernet_hdr_t *eth_header = (sr_ethernet_hdr_t*)(buffer);
     eth_header->ether_type = htons(ethertype_ip);
-    memset(eth_header->ether_shost, 0x00, ETHER_ADDR_LEN);
-    memset(eth_header->ether_dhost, 0x00, ETHER_ADDR_LEN);
-
+    memset(eth_header->ether_shost, 0, ETHER_ADDR_LEN);
+    memset(eth_header->ether_dhost, 0, ETHER_ADDR_LEN);
     /* IP header */
     sr_ip_hdr_t *ip_header = (sr_ip_hdr_t*)(buffer + sizeof(sr_ethernet_hdr_t));
     ip_header->ip_hl = HL_IP;
@@ -76,10 +75,10 @@
     ip_header->ip_off = htons(IP_DF);
     ip_header->ip_dst = src_ip_hdr->ip_src;
 
-
     struct sr_rt *match = longest_prefix_match(sr, src_ip_hdr->ip_src);
     if(!match){
-        fprintf(stderr,"Net Unreachable\n");
+        printf("Error\n");
+        free(buffer);
         return;
     }
 
@@ -87,64 +86,57 @@
     
     /* ICMP header */
     sr_icmp_t3_hdr_t *icmp_header = (sr_icmp_t3_hdr_t *)((uint8_t*)ip_header + sizeof(sr_ip_hdr_t));
-
     /* Check error code or type */
     switch(error_code_or_type) 
     {
       case HOST_UNR:
-        fprintf(stderr, "Host Unreachable");
+        fprintf(stderr, "Host Unreachable\n");
         icmp_header->icmp_type = 3;
         icmp_header->icmp_code = HOST_UNR;
         break;
       case NET_UNR:
-        fprintf(stderr, "Net Unreachable");
+        fprintf(stderr, "Net Unreachable\n");
         icmp_header->icmp_type = 3;
         icmp_header->icmp_code = NET_UNR;
         break;
       case PORT_UNR:
-        fprintf(stderr, "Port Unreachable");
+        fprintf(stderr, "Port Unreachable\n");
         icmp_header->icmp_type = 3;
         icmp_header->icmp_code = PORT_UNR;
         break;
       case ICMP_TTL:
-        fprintf(stderr, "TTL Exceeded");
+        fprintf(stderr, "TTL Exceeded\n");
         icmp_header->icmp_type = ICMP_TTL;
         icmp_header->icmp_code = 0;
         break;
       default:
-        fprintf(stderr, "Code or Type doesn't exist");
+        fprintf(stderr, "Code or Type doesn't exist\n");
         break;
     }
 
-    memcpy(icmp_header->data,(uint8_t*)src_ip_hdr, htons(src_ip_hdr->ip_len));
     icmp_header->icmp_sum = CHKSUM;
-    icmp_header->icmp_sum = cksum(icmp_header, sizeof(sr_icmp_t3_hdr_t) + htons(src_ip_hdr->ip_len));
+    memcpy(icmp_header->data, src_ip_hdr, ICMP_DATA_SIZE);
+    icmp_header->icmp_sum = cksum(icmp_header, sizeof(sr_icmp_t3_hdr_t));
 
-    printf("ICMP HEADER filled\n");
-
-    if(icmp_header->icmp_code == PORT_UNR){
+    print_hdr_icmp((uint8_t*)ip_header + sizeof(sr_ip_hdr_t));
+    if(icmp_header->icmp_code == PORT_UNR) {
       ip_header->ip_src = src_ip_hdr->ip_dst;
-    }else{
+    } else {
       ip_header->ip_src = iface->ip;
     }
-    printf("ICMP checksum done\n");
     nexthop_interface(sr, buffer,  sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_t3_hdr_t), match->gw.s_addr, iface);
-    printf("SENT\n");
     free(buffer);
  }
 
  void icmp_echo_handler(struct sr_instance* sr, sr_ip_hdr_t* src_ip_hdr, sr_ethernet_hdr_t* src_eth_hdr)
  { 
     uint8_t* buffer = (uint8_t*)malloc(sizeof(sr_ethernet_hdr_t) + ntohs(src_ip_hdr->ip_len));
-    printf("regular ECHO\n");
 
     /* Ethernet header */
     sr_ethernet_hdr_t *eth_header = (sr_ethernet_hdr_t*) buffer;
     eth_header->ether_type = htons(ethertype_ip);
-    memset(eth_header->ether_shost,0x00,ETHER_ADDR_LEN);
-    memset(eth_header->ether_dhost,0x00,ETHER_ADDR_LEN);
-
-    printf("after ETH\n");
+    memset(eth_header->ether_shost, 0x00, ETHER_ADDR_LEN);
+    memset(eth_header->ether_dhost, 0x00, ETHER_ADDR_LEN);
 
     /* IP header */
     sr_ip_hdr_t *ip_header = (sr_ip_hdr_t*)(buffer + sizeof(sr_ethernet_hdr_t));
@@ -153,11 +145,9 @@
     ip_header->ip_src = src_ip_hdr->ip_dst;
     ip_header->ip_sum = cksum(buffer+sizeof(sr_ethernet_hdr_t), sizeof(sr_ip_hdr_t));
 
-    printf("after IP\n");
-
     struct sr_rt *match = longest_prefix_match(sr, src_ip_hdr->ip_src);
-    if(!match){
-        fprintf(stderr,"Net Unreachable\n");
+    if(!match) {
+        fprintf(stderr, "Net Unreachable\n");
         free(buffer);
         return;
     }
@@ -194,7 +184,7 @@
      }
 
      sr_ip_hdr_t *ip_header = (sr_ip_hdr_t *)(packet + sizeof(sr_ethernet_hdr_t));
-     if(ip_header->ip_hl < 5 || ip_header->ip_v != 4){
+     if(ip_header->ip_hl < HL_IP || ip_header->ip_v != V_IP){
        fprintf(stderr, "Wrong Packet Version\n");
        return 3;
      }
@@ -203,6 +193,7 @@
      ip_header->ip_sum = CHKSUM;
      if(cksum(ip_header, ip_header->ip_hl * 4) != curr_ip_sum){
        fprintf(stderr,"IP Checksum Mismatch");
+       ip_header->ip_sum = curr_ip_sum;
        return 4;
      }
 
@@ -216,8 +207,9 @@
        sr_icmp_hdr_t *icmp_header = (sr_icmp_hdr_t*)(packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
        uint32_t curr_icmp_sum = icmp_header->icmp_sum;
        icmp_header->icmp_sum = CHKSUM;
-       if(cksum((uint8_t*)icmp_header, ntohs(ip_header->ip_len) - sizeof(sr_ip_hdr_t)) != curr_icmp_sum){
+       if(cksum((uint8_t *) icmp_header, ntohs(ip_header->ip_len) - sizeof(sr_ip_hdr_t)) != curr_icmp_sum){
          fprintf(stderr, "ICMP Checksum Mismatch\n");
+         icmp_header->icmp_sum = curr_icmp_sum;
          return 6;
        }
      }
@@ -238,16 +230,13 @@
  void nexthop_interface(struct sr_instance* sr, uint8_t* packet, unsigned int length, uint32_t ip, struct sr_if* iface)
  { 
    struct sr_arpentry* entry = sr_arpcache_lookup(&(sr->cache), ip);
-   printf("Handling next hop\n");
    if(entry != NULL){
      sr_ethernet_hdr_t* eth_header = (sr_ethernet_hdr_t *)(packet);
-     printf("OOF IM NULL\n");
      memcpy(eth_header->ether_dhost,entry->mac,ETHER_ADDR_LEN);
      memcpy(eth_header->ether_shost,iface->addr,ETHER_ADDR_LEN);
      sr_send_packet(sr,packet,length,iface->name);
      free(entry);
    } else {
-     printf("TEST\n");
      sr_arpcache_queuereq(&sr->cache, ip, packet, length, iface->name);
    }
  }
@@ -358,12 +347,14 @@ void sr_handlepacket(struct sr_instance* sr,
         icmp_echo_handler(sr, ip_header, eth_header);
       }else{
         printf("None Type0\n");
-        icmp_non_type0_handler(sr, ip_header, eth_header, 3);
+        icmp_non_type0_handler(sr, ip_header, eth_header, PORT_UNR);
       }
 
     } else {
       printf("CHECKER FAIL \n");
-      
+      if (ip_header->ip_ttl <= 1){
+        icmp_non_type0_handler(sr, ip_header, eth_header, ICMP_TTL);
+      }
       ip_header->ip_ttl = ip_header->ip_ttl-1;
       ip_header->ip_sum = 0;
       ip_header->ip_sum = cksum(ip_header, ip_header->ip_hl*4);
@@ -371,7 +362,7 @@ void sr_handlepacket(struct sr_instance* sr,
       struct sr_rt *match = longest_prefix_match(sr, ip_header->ip_dst);
       if(!match) {
         printf("	no match in LPM, net unreachable\n");
-        icmp_non_type0_handler(sr,ip_header,eth_header,0);
+        icmp_non_type0_handler(sr, ip_header, eth_header, NET_UNR);
       } else {
         printf("MATCH FOUND\n");
         struct sr_if *iface = sr_get_interface(sr, match->interface);
@@ -389,12 +380,11 @@ void sr_handlepacket(struct sr_instance* sr,
         if(arp_src->ar_tip == iface->ip) {
           uint8_t* buffer = (uint8_t*)malloc(sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t));
           assert(buffer);
-          printf("Buffer not empty! \n");
+
           sr_ethernet_hdr_t* eth_header = (sr_ethernet_hdr_t*)(buffer);
           memcpy(eth_header->ether_dhost, arp_src->ar_sha, ETHER_ADDR_LEN);
           memcpy(eth_header->ether_shost, iface->addr, ETHER_ADDR_LEN);
           eth_header->ether_type = htons(ethertype_arp);
-          printf("ARP: Eth header filled! \n");
           sr_arp_hdr_t* arp_header = (sr_arp_hdr_t*)(buffer + sizeof(sr_ethernet_hdr_t));
           arp_header->ar_hrd = htons(arp_hrd_ethernet);
           arp_header->ar_pro = htons(ethertype_ip);
@@ -405,9 +395,7 @@ void sr_handlepacket(struct sr_instance* sr,
           arp_header->ar_sip = iface->ip;
           memcpy(arp_header->ar_tha, arp_src->ar_sha, ETHER_ADDR_LEN);
           arp_header->ar_tip = arp_src->ar_sip;
-          printf("ARP: ARP header filled! \n");
           sr_send_packet(sr, buffer,sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t), iface->name);
-          printf("ARP: packet sent! \n");
           free(buffer);
         } else {
           fprintf(stderr,"Error\n");
@@ -415,25 +403,28 @@ void sr_handlepacket(struct sr_instance* sr,
         }
       } else if(ntohs(arp_src->ar_op) == arp_op_reply) {
         if(arp_src->ar_tip == iface->ip) {
-          printf("ARP_REP: entered! \n");
-
           struct sr_arpreq* request = sr_arpcache_insert(&sr->cache, arp_src->ar_sha, arp_src->ar_sip);
-          if(request != NULL){
-
-            printf("ARP_REP: request not null! \n");
+          
+          if(request != NULL) {
             struct sr_if* iface;
             struct sr_packet* curr_pkt = request->packets;
-            while (curr_pkt != NULL){
-              iface = sr_get_interface(sr,curr_pkt->iface);
+            while(curr_pkt != NULL) {
+              iface = sr_get_interface(sr, curr_pkt->iface);
               nexthop_interface(sr,curr_pkt->buf, curr_pkt->len, request->ip, iface);
               curr_pkt = curr_pkt->next;
             }
 
-            sr_arpreq_destroy(&sr->cache, request);
+            sr_arpreq_destroy(&(sr->cache), request);
           }
+        } else {
+          fprintf(stderr, "No ARP Request recieved\n");
+          return;
         }
       }
     }
+  } else {
+    fprintf(stderr, "Packet could not be handled\n");
+    return;
   }
 }/* end sr_ForwardPacket */
 
